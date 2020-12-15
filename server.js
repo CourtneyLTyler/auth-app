@@ -2,24 +2,19 @@ require('dotenv').config();
 
 const express = require('express');
 const mongo = require('mongodb').MongoClient;
+const dbUrl = 'mongodb://localhost:27017';
 const app = express();
 const bcrypt = require('bcrypt');
 const passport = require('passport');
 const flash = require('express-flash');
 const session = require('express-session');
 const override = require('method-override');
+const jwt = require('jsonwebtoken');
+let db, users;
 
 const initializePassport = require('./passport-config');
-initializePassport.initialize(
-    passport,
-    email => users.find(user => user.email === email ),
-    id => users.find(user => user.id === id)
-);
-const users = [];
 
 app.set('view-engine', 'ejs');
-
-const jwt = require('jsonwebtoken');
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
@@ -33,6 +28,22 @@ app.use(passport.initialize());
 app.use(passport.session());
 app.use(override('_method'));
 
+
+initializePassport(
+    passport,
+    email => {
+        return users.findOne({ email: email})
+    },
+    id => {
+        return users.findOne({ _id: id })
+    }
+);
+mongo.connect(dbUrl, (err, client) => {
+    if (err) return err;
+    db = client.db('authtestdb');
+    users = db.collection('users');
+})
+
 const posts = [
     {
         username: 'Court',
@@ -44,8 +55,8 @@ const posts = [
     }
 ]
 
-app.get('/', checkAuthenticated, (req, res) => {
-    res.render('index.ejs', { name: req.user.name });
+app.get('/', checkAuthenticated, async (req, res) => {
+    res.render('index.ejs');
 })
 
 app.get('/login', checkNotAuthenticated, (req, res) =>  {
@@ -65,19 +76,16 @@ app.get('/register', (req, res) =>  {
 app.post('/register', async (req, res) => {
     try {
         const hashedPassword = await bcrypt.hash(req.body.password, 10);
-        // this is what we would send to the db
-        // except wouldn't need id if using db, would be generated
-        users.push({
-            id: Date.now().toString(),
+        const user = {
             name: req.body.name,
             email: req.body.email,
             password: hashedPassword
-        })
-        res.redirect('/login');
+        }
+        users.insertOne(user);
+        return res.redirect('/login');
     } catch {
         res.redirect('/register');
     }
-    console.log('users: ', users);
 })
 
 app.get('/posts', authenticateToken, (req, res) => {
@@ -85,7 +93,7 @@ app.get('/posts', authenticateToken, (req, res) => {
 })
 
 // app.post('/login', (req, res) => {
-//     // authenticate user - separate video
+//     // authenticate user here
 //     const username = req.body.username;
 //     const user = { name: username };
 
