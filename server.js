@@ -10,7 +10,7 @@ const flash = require('express-flash');
 const session = require('express-session');
 const override = require('method-override');
 const jwt = require('jsonwebtoken');
-let db, users;
+let db, users, posts;
 
 const initializePassport = require('./passport-config');
 
@@ -31,29 +31,15 @@ app.use(override('_method'));
 
 initializePassport(
     passport,
-    email => {
-        return users.findOne({ email: email})
-    },
-    id => {
-        return users.findOne({ _id: id })
-    }
+    email => users.findOne({ email: email}),
+    id => users.findOne({ _id: id })
 );
 mongo.connect(dbUrl, (err, client) => {
     if (err) return err;
     db = client.db('authtestdb');
     users = db.collection('users');
+    posts = db.collection('posts');
 })
-
-const posts = [
-    {
-        username: 'Court',
-        title: 'First Post'
-    },
-    {
-        username: 'Jay',
-        title: 'Second Post'
-    }
-]
 
 app.get('/', checkAuthenticated, async (req, res) => {
     res.render('index.ejs');
@@ -63,11 +49,22 @@ app.get('/login', checkNotAuthenticated, (req, res) =>  {
     res.render('login.ejs');
 })
 
-app.post('/login', passport.authenticate('local', {
-    successRedirect: '/',
-    failureRedirect: '/login',
-    failureFlash: true
-}))
+app.post('/login', passport.authenticate('local'), (req, res) => {
+    if (req.user == null) {
+        res.redirect('/login)')
+        return
+    }
+    if (req.user) {
+        const accessToken = jwt.sign(req.user, process.env.ACCESS_TOKEN_SECRET);
+        users.updateOne(
+            { email: req.user.email },
+            {
+                $set: { "token": accessToken }
+            }
+        )
+        res.redirect('/');
+    }
+})
 
 app.get('/register', (req, res) =>  {
     res.render('register.ejs');
@@ -88,18 +85,20 @@ app.post('/register', async (req, res) => {
     }
 })
 
-app.get('/posts', authenticateToken, (req, res) => {
-    res.json(posts.filter(post => post.username === req.user.name));
+app.post('/posts', (req, res) => {
+    const post = req.body.post;
+    const email = req.body.email;
+    posts.insertOne({
+        post: post,
+        email: email
+    });
+    res.send()
 })
 
-// app.post('/login', (req, res) => {
-//     // authenticate user here
-//     const username = req.body.username;
-//     const user = { name: username };
-
-//     const accessToken = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET);
-//     res.json({ accessToken: accessToken });
-// })
+app.get('/posts', authenticateToken, async (req, res) => {
+    const sendPosts = await posts.find({ email: req.user.email }).toArray();
+    res.send(sendPosts);
+})
 
 function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];

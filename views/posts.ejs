@@ -1,0 +1,9 @@
+
+<h2>Posts!</h2>
+<% if(displayPosts){ %>
+    <% displayPosts.forEach(function(post) { %>
+        <%= post %>
+    <% }); %>
+<% } else{ %>  
+    <p>no posts to show</p>
+<% } %>
