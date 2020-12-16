@@ -49,17 +49,22 @@ app.get('/login', checkNotAuthenticated, (req, res) =>  {
     res.render('login.ejs');
 })
 
-app.post('/login', passport.authenticate('local'), (req, res) => {
+app.post('/login', passport.authenticate('local'), async (req, res) => {
     if (req.user == null) {
         res.redirect('/login)')
         return
     }
     if (req.user) {
+        const tokenField = await users.find( {email: req.user.email }, {_id: 0, token: 1}).toArray();
+        if (tokenField[0].token) {
+            res.redirect('/');
+            return
+        }
         const accessToken = jwt.sign(req.user, process.env.ACCESS_TOKEN_SECRET);
         users.updateOne(
             { email: req.user.email },
             {
-                $set: { "token": accessToken }
+                $set: { token: accessToken }
             }
         )
         res.redirect('/');
@@ -118,6 +123,8 @@ app.delete('/logout', (req, res) => {
     req.logOut();
     res.redirect('/login');
 })
+
+
 
 function checkAuthenticated(req, res, next) {
     if (req.isAuthenticated()) {
